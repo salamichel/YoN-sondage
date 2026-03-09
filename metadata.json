@@ -1,0 +1,5 @@
+{
+  "name": "Sondage Titres Groupe",
+  "description": "Outil de sondage en temps réel pour choisir les prochains titres du groupe.",
+  "requestFramePermissions": []
+}

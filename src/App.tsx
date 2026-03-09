@@ -7,7 +7,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Plus, Trash2, Music, Users, Check, X, HelpCircle, Loader2, ExternalLink, TrendingUp, Clock, SortAsc, Trophy } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-type VoteStatus = 'Oui' | 'Peut-être' | 'Non' | null;
+type VoteStatus = 'OK' | 'POURQUOI PAS' | 'KO' | null;
 
 interface Question {
   id: number;
@@ -47,8 +47,8 @@ export default function App() {
     let score = 0;
     votes.forEach(v => {
       const rep = v.reponses[questionId];
-      if (rep === 'Oui') score += 2;
-      else if (rep === 'Peut-être') score += 1;
+      if (rep === 'OK') score += 2;
+      else if (rep === 'POURQUOI PAS') score += 1;
     });
     return score;
   };
@@ -319,14 +319,19 @@ export default function App() {
                         <div
                           key={member}
                           className={`relative p-2 rounded-lg text-center transition-all ${
-                            status === 'Oui' ? 'bg-emerald-500 text-white' :
-                            status === 'Peut-être' ? 'bg-amber-400 text-white' :
-                            status === 'Non' ? 'bg-rose-500 text-white' :
+                            status === 'OK' ? 'bg-emerald-500 text-white' :
+                            status === 'POURQUOI PAS' ? 'bg-amber-400 text-white' :
+                            status === 'KO' ? 'bg-rose-500 text-white' :
                             'bg-slate-50 text-slate-400'
                           } ${isCurrent ? 'ring-2 ring-slate-800 ring-offset-2' : ''}`}
                         >
                           <span className="text-xs font-bold block truncate">
-                            {member} {status === 'Oui' ? '🤘' : status === 'Peut-être' ? '🤔' : status === 'Non' ? '❌' : ''}
+                            {member} {
+                              status === 'OK' ? '🤘' : 
+                              status === 'POURQUOI PAS' ? '🤔' : 
+                              status === 'KO' ? '❌' : 
+                              (status && status !== 'Pas de réponse' ? `(${status})` : '')
+                            }
                           </span>
                         </div>
                       );
@@ -337,23 +342,23 @@ export default function App() {
                   {currentMember && (
                     <div className="mt-auto pt-4 border-t border-slate-50 flex justify-center gap-3">
                       <button
-                        onClick={() => handleVote(q.id, 'Oui')}
-                        className={`p-3 rounded-xl transition-all ${getVoteStatus(q.id, currentMember) === 'Oui' ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-100 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600'}`}
-                        title="Oui"
+                        onClick={() => handleVote(q.id, 'OK')}
+                        className={`p-3 rounded-xl transition-all ${getVoteStatus(q.id, currentMember) === 'OK' ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-100 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600'}`}
+                        title="OK"
                       >
                         <Check size={20} />
                       </button>
                       <button
-                        onClick={() => handleVote(q.id, 'Peut-être')}
-                        className={`p-3 rounded-xl transition-all ${getVoteStatus(q.id, currentMember) === 'Peut-être' ? 'bg-amber-500 text-white shadow-md' : 'bg-slate-100 text-slate-400 hover:bg-amber-50 hover:text-amber-600'}`}
-                        title="Peut-être"
+                        onClick={() => handleVote(q.id, 'POURQUOI PAS')}
+                        className={`p-3 rounded-xl transition-all ${getVoteStatus(q.id, currentMember) === 'POURQUOI PAS' ? 'bg-amber-500 text-white shadow-md' : 'bg-slate-100 text-slate-400 hover:bg-amber-50 hover:text-amber-600'}`}
+                        title="POURQUOI PAS"
                       >
                         <HelpCircle size={20} />
                       </button>
                       <button
-                        onClick={() => handleVote(q.id, 'Non')}
-                        className={`p-3 rounded-xl transition-all ${getVoteStatus(q.id, currentMember) === 'Non' ? 'bg-rose-600 text-white shadow-md' : 'bg-slate-100 text-slate-400 hover:bg-rose-50 hover:text-rose-600'}`}
-                        title="Non"
+                        onClick={() => handleVote(q.id, 'KO')}
+                        className={`p-3 rounded-xl transition-all ${getVoteStatus(q.id, currentMember) === 'KO' ? 'bg-rose-600 text-white shadow-md' : 'bg-slate-100 text-slate-400 hover:bg-rose-50 hover:text-rose-600'}`}
+                        title="KO"
                       >
                         <X size={20} />
                       </button>

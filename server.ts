@@ -30,6 +30,13 @@ db.exec(`
   );
 `);
 
+// Migration: Add status column to questions if it doesn't exist
+try {
+  db.prepare("ALTER TABLE questions ADD COLUMN status TEXT DEFAULT 'active'").run();
+} catch (e) {
+  // Column already exists or other error
+}
+
 // Seed initial data if empty
 const qCount = db.prepare('SELECT COUNT(*) as count FROM questions').get() as { count: number };
 if (qCount.count === 0) {
@@ -59,8 +66,8 @@ app.get('/api/questions', (req, res) => {
 
 app.post('/api/questions', (req, res) => {
   const { texte, lien } = req.body;
-  const result = db.prepare('INSERT INTO questions (texte, lien) VALUES (?, ?)').run(texte, lien);
-  const newQ = { id: result.lastInsertRowid, texte, lien };
+  const result = db.prepare('INSERT INTO questions (texte, lien, status) VALUES (?, ?, ?)').run(texte, lien, 'active');
+  const newQ = { id: result.lastInsertRowid, texte, lien, status: 'active' };
   broadcast({ type: 'QUESTION_ADDED', question: newQ });
   res.json(newQ);
 });
@@ -69,7 +76,8 @@ app.put('/api/questions/:id', (req, res) => {
   const { id } = req.params;
   const { texte, lien } = req.body;
   db.prepare('UPDATE questions SET texte = ?, lien = ? WHERE id = ?').run(texte, lien, id);
-  broadcast({ type: 'QUESTION_UPDATED', question: { id: parseInt(id), texte, lien } });
+  const updatedQ = db.prepare('SELECT * FROM questions WHERE id = ?').get(id);
+  broadcast({ type: 'QUESTION_UPDATED', question: updatedQ });
   res.sendStatus(200);
 });
 
@@ -109,7 +117,13 @@ app.delete('/api/members/:pseudo', (req, res) => {
 
 app.get('/api/votes', (req, res) => {
   const votes = db.prepare('SELECT * FROM votes').all();
-  res.json(votes.map((v: any) => ({ ...v, reponses: JSON.parse(v.reponses) })));
+  res.json(votes.map((v: any) => {
+    try {
+      return { ...v, reponses: JSON.parse(v.reponses || '{}') };
+    } catch (e) {
+      return { ...v, reponses: {} };
+    }
+  }));
 });
 
 app.post('/api/votes', (req, res) => {

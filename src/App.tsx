@@ -119,6 +119,8 @@ export default function App() {
         setQuestions(prev => [...prev, data.question]);
       } else if (data.type === 'QUESTION_DELETED') {
         setQuestions(prev => prev.filter(q => q.id !== data.id));
+      } else if (data.type === 'QUESTION_UPDATED') {
+        setQuestions(prev => prev.map(q => q.id === data.question.id ? data.question : q));
       } else if (data.type === 'QUESTION_STATUS_UPDATED') {
         setQuestions(prev => prev.map(q => q.id === data.id ? { ...q, status: data.status } : q));
       } else if (data.type === 'VOTE_UPDATED') {
@@ -289,19 +291,23 @@ export default function App() {
               <span className="text-xs font-bold uppercase tracking-wider">Qui vote ?</span>
             </div>
             <div className="flex flex-wrap justify-center gap-3">
-              {members.map(member => (
-                <button
-                  key={member.pseudo}
-                  onClick={() => selectMember(member.pseudo)}
-                  className={`px-6 py-2 rounded-full text-sm font-semibold transition-all ${
-                    currentMember === member.pseudo
-                      ? 'bg-slate-800 text-white shadow-lg scale-105'
-                      : 'bg-white text-slate-600 border border-slate-200 hover:border-slate-400'
-                  }`}
-                >
-                  {member.pseudo}
-                </button>
-              ))}
+              {members.length > 0 ? (
+                members.map(member => (
+                  <button
+                    key={member.pseudo}
+                    onClick={() => selectMember(member.pseudo)}
+                    className={`px-6 py-2 rounded-full text-sm font-semibold transition-all ${
+                      currentMember === member.pseudo
+                        ? 'bg-slate-800 text-white shadow-lg scale-105'
+                        : 'bg-white text-slate-600 border border-slate-200 hover:border-slate-400'
+                    }`}
+                  >
+                    {member.pseudo}
+                  </button>
+                ))
+              ) : (
+                <p className="text-slate-400 text-sm italic">Aucun membre configuré. Allez dans Admin.</p>
+              )}
             </div>
           </div>
 
@@ -344,7 +350,24 @@ export default function App() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             <AnimatePresence mode="popLayout">
               {sortedQuestions
-                .filter(q => activeTab === 'poll' ? q.status === 'active' : q.status === 'validated')
+                .filter(q => {
+                  const status = q.status || 'active';
+                  return activeTab === 'poll' ? status === 'active' : status === 'validated';
+                }).length === 0 && (
+                  <motion.div 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="col-span-full py-20 text-center"
+                  >
+                    <Music className="mx-auto text-slate-200 mb-4" size={48} />
+                    <p className="text-slate-400 italic">Aucun titre dans cette catégorie.</p>
+                  </motion.div>
+                )}
+              {sortedQuestions
+                .filter(q => {
+                  const status = q.status || 'active';
+                  return activeTab === 'poll' ? status === 'active' : status === 'validated';
+                })
                 .map((q, index) => {
                 const thumb = extractYoutubeThumbnail(q.lien) || `https://picsum.photos/seed/${encodeURIComponent(q.texte)}/400/300`;
                 const score = getScore(q.id);
@@ -545,7 +568,7 @@ export default function App() {
             <h3 className="text-lg font-bold text-slate-800 mb-2">Titres rejetés</h3>
             <p className="text-sm text-slate-500 mb-6">Ces titres ont été sortis du sondage sans être validés.</p>
             <div className="space-y-2">
-              {questions.filter(q => q.status === 'rejected').map(q => (
+              {questions.filter(q => (q.status || 'active') === 'rejected').map(q => (
                 <div key={q.id} className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-100">
                   <span className="font-medium text-slate-600">{q.texte}</span>
                   <div className="flex gap-2">
@@ -564,7 +587,7 @@ export default function App() {
                   </div>
                 </div>
               ))}
-              {questions.filter(q => q.status === 'rejected').length === 0 && (
+              {questions.filter(q => (q.status || 'active') === 'rejected').length === 0 && (
                 <div className="text-center py-4 text-slate-400 text-sm italic">Aucun titre rejeté</div>
               )}
             </div>

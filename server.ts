@@ -15,12 +15,18 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS questions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     texte TEXT,
-    lien TEXT
+    lien TEXT,
+    status TEXT DEFAULT 'active'
   );
   CREATE TABLE IF NOT EXISTS votes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     pseudo TEXT UNIQUE,
     reponses TEXT
+  );
+  CREATE TABLE IF NOT EXISTS members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pseudo TEXT UNIQUE,
+    active INTEGER DEFAULT 1
   );
 `);
 
@@ -32,8 +38,15 @@ if (qCount.count === 0) {
     { texte: "Mademoiselle K - à l'ombre", lien: "" },
     { texte: "Mademoiselle K - ca me vexe", lien: "" }
   ];
-  const insertQ = db.prepare('INSERT INTO questions (texte, lien) VALUES (?, ?)');
-  initialQuestions.forEach(q => insertQ.run(q.texte, q.lien));
+  const insertQ = db.prepare('INSERT INTO questions (texte, lien, status) VALUES (?, ?, ?)');
+  initialQuestions.forEach(q => insertQ.run(q.texte, q.lien, 'active'));
+}
+
+const mCount = db.prepare('SELECT COUNT(*) as count FROM members').get() as { count: number };
+if (mCount.count === 0) {
+  const initialMembers = ['Vanessa', 'Laurent', 'Stéph', 'Pierre', 'Eric', 'Maxime'];
+  const insertM = db.prepare('INSERT INTO members (pseudo) VALUES (?)');
+  initialMembers.forEach(m => insertM.run(m));
 }
 
 app.use(express.json());
@@ -60,10 +73,37 @@ app.put('/api/questions/:id', (req, res) => {
   res.sendStatus(200);
 });
 
-app.delete('/api/questions/:id', (req, res) => {
+app.put('/api/questions/:id/status', (req, res) => {
   const { id } = req.params;
-  db.prepare('DELETE FROM questions WHERE id = ?').run(id);
-  broadcast({ type: 'QUESTION_DELETED', id: parseInt(id) });
+  const { status } = req.body;
+  db.prepare('UPDATE questions SET status = ? WHERE id = ?').run(status, id);
+  broadcast({ type: 'QUESTION_STATUS_UPDATED', id: parseInt(id), status });
+  res.sendStatus(200);
+});
+
+app.get('/api/members', (req, res) => {
+  const members = db.prepare('SELECT * FROM members WHERE active = 1').all();
+  res.json(members);
+});
+
+app.post('/api/members', (req, res) => {
+  const { pseudo } = req.body;
+  try {
+    db.prepare('INSERT INTO members (pseudo) VALUES (?)').run(pseudo);
+    broadcast({ type: 'MEMBER_ADDED', member: { pseudo, active: 1 } });
+    res.status(201).json({ pseudo });
+  } catch (e) {
+    res.status(400).json({ error: 'Member already exists' });
+  }
+});
+
+app.delete('/api/members/:pseudo', (req, res) => {
+  const { pseudo } = req.params;
+  // Option: Mark as inactive instead of deleting to preserve history if needed
+  // Or delete votes too
+  db.prepare('DELETE FROM members WHERE pseudo = ?').run(pseudo);
+  db.prepare('DELETE FROM votes WHERE pseudo = ?').run(pseudo);
+  broadcast({ type: 'MEMBER_REMOVED', pseudo });
   res.sendStatus(200);
 });
 

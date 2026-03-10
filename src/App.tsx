@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Trash2, Music, Users, Check, X, HelpCircle, Loader2, ExternalLink, TrendingUp, Clock, SortAsc, Trophy } from 'lucide-react';
+import { Plus, Trash2, Music, Users, Check, X, HelpCircle, Loader2, ExternalLink, TrendingUp, Clock, SortAsc, Trophy, CheckCircle2, XCircle, Archive, BookOpen, Settings, UserPlus, UserMinus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 type VoteStatus = 'OK' | 'POURQUOI PAS' | 'KO' | null;
@@ -13,6 +13,12 @@ interface Question {
   id: number;
   texte: string;
   lien: string;
+  status: 'active' | 'validated' | 'rejected';
+}
+
+interface Member {
+  pseudo: string;
+  active: number;
 }
 
 interface Vote {
@@ -20,7 +26,7 @@ interface Vote {
   reponses: Record<number, string>;
 }
 
-const MEMBERS = ['Vanessa', 'Laurent', 'Stéph', 'Pierre', 'Eric'];
+const MEMBERS = []; // Removed hardcoded list
 
 const extractYoutubeThumbnail = (url: string) => {
   if (!url) return null;
@@ -36,11 +42,14 @@ const extractYoutubeThumbnail = (url: string) => {
 export default function App() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [votes, setVotes] = useState<Vote[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
   const [currentMember, setCurrentMember] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [newQuestion, setNewQuestion] = useState({ texte: '', lien: '' });
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<'recent' | 'popular' | 'alpha'>('recent');
+  const [activeTab, setActiveTab] = useState<'poll' | 'repertoire' | 'admin'>('poll');
+  const [newMemberPseudo, setNewMemberPseudo] = useState('');
   const socketRef = useRef<WebSocket | null>(null);
 
   const getScore = (questionId: number) => {
@@ -71,7 +80,7 @@ export default function App() {
     connectWebSocket();
     
     const savedMember = localStorage.getItem('poll_member');
-    if (savedMember && MEMBERS.includes(savedMember)) {
+    if (savedMember) {
       setCurrentMember(savedMember);
     }
 
@@ -82,14 +91,17 @@ export default function App() {
 
   const fetchData = async () => {
     try {
-      const [qRes, vRes] = await Promise.all([
+      const [qRes, vRes, mRes] = await Promise.all([
         fetch('/api/questions'),
-        fetch('/api/votes')
+        fetch('/api/votes'),
+        fetch('/api/members')
       ]);
       const qs = await qRes.json();
       const vs = await vRes.json();
+      const ms = await mRes.json();
       setQuestions(qs);
       setVotes(vs);
+      setMembers(ms);
       setLoading(false);
     } catch (err) {
       console.error('Failed to fetch data', err);
@@ -107,11 +119,22 @@ export default function App() {
         setQuestions(prev => [...prev, data.question]);
       } else if (data.type === 'QUESTION_DELETED') {
         setQuestions(prev => prev.filter(q => q.id !== data.id));
+      } else if (data.type === 'QUESTION_STATUS_UPDATED') {
+        setQuestions(prev => prev.map(q => q.id === data.id ? { ...q, status: data.status } : q));
       } else if (data.type === 'VOTE_UPDATED') {
         setVotes(prev => {
           const filtered = prev.filter(v => v.pseudo !== data.vote.pseudo);
           return [...filtered, data.vote];
         });
+      } else if (data.type === 'MEMBER_ADDED') {
+        setMembers(prev => [...prev, data.member]);
+      } else if (data.type === 'MEMBER_REMOVED') {
+        setMembers(prev => prev.filter(m => m.pseudo !== data.pseudo));
+        setVotes(prev => prev.filter(v => v.pseudo !== data.pseudo));
+        if (currentMember === data.pseudo) {
+          setCurrentMember(null);
+          localStorage.removeItem('poll_member');
+        }
       }
     };
 
@@ -146,6 +169,41 @@ export default function App() {
     }
   };
 
+  const handleUpdateStatus = async (id: number, status: string) => {
+    try {
+      await fetch(`/api/questions/${id}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+    } catch (err) {
+      console.error('Failed to update status', err);
+    }
+  };
+
+  const handleAddMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMemberPseudo.trim()) return;
+    try {
+      await fetch('/api/members', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pseudo: newMemberPseudo.trim() }),
+      });
+      setNewMemberPseudo('');
+    } catch (err) {
+      console.error('Failed to add member', err);
+    }
+  };
+
+  const handleRemoveMember = async (pseudo: string) => {
+    if (!window.confirm(`Supprimer ${pseudo} et tous ses votes ?`)) return;
+    try {
+      await fetch(`/api/members/${pseudo}`, { method: 'DELETE' });
+    } catch (err) {
+      console.error('Failed to remove member', err);
+    }
+  };
   const handleVote = async (questionId: number, status: VoteStatus) => {
     if (!currentMember) return;
     
@@ -195,181 +253,324 @@ export default function App() {
         </p>
       </header>
 
-      {/* Member Selection */}
-      <div className="mb-12 flex flex-col items-center gap-4">
-        <div className="flex items-center gap-2 text-slate-400 mb-2">
-          <Users size={18} />
-          <span className="text-xs font-bold uppercase tracking-wider">Qui vote ?</span>
-        </div>
-        <div className="flex flex-wrap justify-center gap-3">
-          {MEMBERS.map(member => (
-            <button
-              key={member}
-              onClick={() => selectMember(member)}
-              className={`px-6 py-2 rounded-full text-sm font-semibold transition-all ${
-                currentMember === member
-                  ? 'bg-slate-800 text-white shadow-lg scale-105'
-                  : 'bg-white text-slate-600 border border-slate-200 hover:border-slate-400'
-              }`}
-            >
-              {member}
-            </button>
-          ))}
+      {/* Navigation Tabs */}
+      <div className="flex justify-center mb-12">
+        <div className="flex bg-slate-100 p-1 rounded-2xl shadow-inner">
+          <button
+            onClick={() => setActiveTab('poll')}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'poll' ? 'bg-white shadow-md text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            <TrendingUp size={18} />
+            Sondage
+          </button>
+          <button
+            onClick={() => setActiveTab('repertoire')}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'repertoire' ? 'bg-white shadow-md text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            <BookOpen size={18} />
+            Répertoire
+          </button>
+          <button
+            onClick={() => setActiveTab('admin')}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'admin' ? 'bg-white shadow-md text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            <Settings size={18} />
+            Admin
+          </button>
         </div>
       </div>
 
-      {/* Actions & Sorting */}
-      <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-        <div className="flex bg-slate-100 p-1 rounded-xl">
-          <button
-            onClick={() => setSortBy('recent')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${sortBy === 'recent' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            <Clock size={16} />
-            Récents
-          </button>
-          <button
-            onClick={() => setSortBy('popular')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${sortBy === 'popular' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            <TrendingUp size={16} />
-            Populaires
-          </button>
-          <button
-            onClick={() => setSortBy('alpha')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${sortBy === 'alpha' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            <SortAsc size={16} />
-            A-Z
-          </button>
-        </div>
-        
-        <button
-          onClick={() => setIsAdding(true)}
-          className="flex items-center gap-2 bg-slate-800 text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-slate-700 transition-colors shadow-sm"
-        >
-          <Plus size={20} />
-          Ajouter un titre
-        </button>
-      </div>
+      {activeTab !== 'admin' && (
+        <>
+          {/* Member Selection */}
+          <div className="mb-12 flex flex-col items-center gap-4">
+            <div className="flex items-center gap-2 text-slate-400 mb-2">
+              <Users size={18} />
+              <span className="text-xs font-bold uppercase tracking-wider">Qui vote ?</span>
+            </div>
+            <div className="flex flex-wrap justify-center gap-3">
+              {members.map(member => (
+                <button
+                  key={member.pseudo}
+                  onClick={() => selectMember(member.pseudo)}
+                  className={`px-6 py-2 rounded-full text-sm font-semibold transition-all ${
+                    currentMember === member.pseudo
+                      ? 'bg-slate-800 text-white shadow-lg scale-105'
+                      : 'bg-white text-slate-600 border border-slate-200 hover:border-slate-400'
+                  }`}
+                >
+                  {member.pseudo}
+                </button>
+              ))}
+            </div>
+          </div>
 
-      {/* Song Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        <AnimatePresence mode="popLayout">
-          {sortedQuestions.map((q, index) => {
-            const thumb = extractYoutubeThumbnail(q.lien) || `https://picsum.photos/seed/${encodeURIComponent(q.texte)}/400/300`;
-            const score = getScore(q.id);
-            return (
-              <motion.div
-                key={q.id}
-                layout
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col relative"
+          {/* Actions & Sorting */}
+          <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+            <div className="flex bg-slate-100 p-1 rounded-xl">
+              <button
+                onClick={() => setSortBy('recent')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${sortBy === 'recent' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
               >
-                {sortBy === 'popular' && index < 3 && (
-                  <div className="absolute top-3 left-3 z-10 bg-amber-400 text-white px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 shadow-md">
-                    <Trophy size={12} />
-                    #{index + 1}
-                  </div>
-                )}
-                <div className="relative aspect-video overflow-hidden group">
-                  <img
-                    src={thumb}
-                    alt={q.texte}
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors pointer-events-none" />
-                  <button
-                    onClick={() => handleDeleteQuestion(q.id)}
-                    className="absolute top-3 right-3 p-2 bg-white/90 backdrop-blur-sm rounded-full text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-rose-50"
+                <Clock size={16} />
+                Récents
+              </button>
+              <button
+                onClick={() => setSortBy('popular')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${sortBy === 'popular' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <TrendingUp size={16} />
+                Populaires
+              </button>
+              <button
+                onClick={() => setSortBy('alpha')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${sortBy === 'alpha' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <SortAsc size={16} />
+                A-Z
+              </button>
+            </div>
+            
+            <button
+              onClick={() => setIsAdding(true)}
+              className="flex items-center gap-2 bg-slate-800 text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-slate-700 transition-colors shadow-sm"
+            >
+              <Plus size={20} />
+              Ajouter un titre
+            </button>
+          </div>
+
+          {/* Song Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <AnimatePresence mode="popLayout">
+              {sortedQuestions
+                .filter(q => activeTab === 'poll' ? q.status === 'active' : q.status === 'validated')
+                .map((q, index) => {
+                const thumb = extractYoutubeThumbnail(q.lien) || `https://picsum.photos/seed/${encodeURIComponent(q.texte)}/400/300`;
+                const score = getScore(q.id);
+                return (
+                  <motion.div
+                    key={q.id}
+                    layout
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col relative"
                   >
-                    <Trash2 size={18} />
-                  </button>
-                  {q.lien && (
-                    <a
-                      href={q.lien}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="absolute bottom-3 right-3 p-2 bg-white/90 backdrop-blur-sm rounded-full text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-slate-50"
-                    >
-                      <ExternalLink size={18} />
-                    </a>
-                  )}
-                </div>
-                
-                <div className="p-6 flex-1 flex flex-col">
-                  <div className="mb-6 flex items-start justify-between gap-2">
-                    <h3 className="text-xl font-bold text-slate-800 leading-tight">{q.texte}</h3>
-                    <div className="shrink-0 bg-slate-50 px-2 py-1 rounded-lg border border-slate-100 flex flex-col items-center min-w-[40px]">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase leading-none mb-1">Score</span>
-                      <span className="text-sm font-bold text-slate-700 leading-none">{score}</span>
-                    </div>
-                  </div>
-
-                  {/* Votes Display */}
-                  <div className="grid grid-cols-3 gap-2 mb-6">
-                    {MEMBERS.map(member => {
-                      const status = getVoteStatus(q.id, member);
-                      const isCurrent = currentMember === member;
+                    {sortBy === 'popular' && index < 3 && activeTab === 'poll' && (
+                      <div className="absolute top-3 left-3 z-10 bg-amber-400 text-white px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 shadow-md">
+                        <Trophy size={12} />
+                        #{index + 1}
+                      </div>
+                    )}
+                    <div className="relative aspect-video overflow-hidden group">
+                      <img
+                        src={thumb}
+                        alt={q.texte}
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors pointer-events-none" />
                       
-                      return (
-                        <div
-                          key={member}
-                          className={`relative p-2 rounded-lg text-center transition-all ${
-                            status === 'OK' ? 'bg-emerald-500 text-white' :
-                            status === 'POURQUOI PAS' ? 'bg-amber-400 text-white' :
-                            status === 'KO' ? 'bg-rose-500 text-white' :
-                            'bg-slate-50 text-slate-400'
-                          } ${isCurrent ? 'ring-2 ring-slate-800 ring-offset-2' : ''}`}
+                      {/* Admin/Quick Actions */}
+                      <div className="absolute top-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {q.status === 'active' && (
+                          <>
+                            <button
+                              onClick={() => handleUpdateStatus(q.id, 'validated')}
+                              className="p-2 bg-emerald-500 text-white rounded-full hover:bg-emerald-600 shadow-lg"
+                              title="Valider (ajouter au répertoire)"
+                            >
+                              <CheckCircle2 size={18} />
+                            </button>
+                            <button
+                              onClick={() => handleUpdateStatus(q.id, 'rejected')}
+                              className="p-2 bg-rose-500 text-white rounded-full hover:bg-rose-600 shadow-lg"
+                              title="Rejeter"
+                            >
+                              <XCircle size={18} />
+                            </button>
+                          </>
+                        )}
+                        {q.status === 'validated' && (
+                          <button
+                            onClick={() => handleUpdateStatus(q.id, 'active')}
+                            className="p-2 bg-slate-500 text-white rounded-full hover:bg-slate-600 shadow-lg"
+                            title="Remettre en sondage"
+                          >
+                            <Archive size={18} />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDeleteQuestion(q.id)}
+                          className="p-2 bg-white text-rose-500 rounded-full hover:bg-rose-50 shadow-lg"
+                          title="Supprimer définitivement"
                         >
-                          <span className="text-xs font-bold block truncate">
-                            {member} {
-                              status === 'OK' ? '🤘' : 
-                              status === 'POURQUOI PAS' ? '🤔' : 
-                              status === 'KO' ? '❌' : 
-                              (status && status !== 'Pas de réponse' ? `(${status})` : '')
-                            }
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
 
-                  {/* Voting Controls */}
-                  {currentMember && (
-                    <div className="mt-auto pt-4 border-t border-slate-50 flex justify-center gap-3">
-                      <button
-                        onClick={() => handleVote(q.id, 'OK')}
-                        className={`p-3 rounded-xl transition-all ${getVoteStatus(q.id, currentMember) === 'OK' ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-100 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600'}`}
-                        title="OK"
-                      >
-                        <Check size={20} />
-                      </button>
-                      <button
-                        onClick={() => handleVote(q.id, 'POURQUOI PAS')}
-                        className={`p-3 rounded-xl transition-all ${getVoteStatus(q.id, currentMember) === 'POURQUOI PAS' ? 'bg-amber-500 text-white shadow-md' : 'bg-slate-100 text-slate-400 hover:bg-amber-50 hover:text-amber-600'}`}
-                        title="POURQUOI PAS"
-                      >
-                        <HelpCircle size={20} />
-                      </button>
-                      <button
-                        onClick={() => handleVote(q.id, 'KO')}
-                        className={`p-3 rounded-xl transition-all ${getVoteStatus(q.id, currentMember) === 'KO' ? 'bg-rose-600 text-white shadow-md' : 'bg-slate-100 text-slate-400 hover:bg-rose-50 hover:text-rose-600'}`}
-                        title="KO"
-                      >
-                        <X size={20} />
-                      </button>
+                      {q.lien && (
+                        <a
+                          href={q.lien}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="absolute bottom-3 right-3 p-2 bg-white/90 backdrop-blur-sm rounded-full text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-slate-50"
+                        >
+                          <ExternalLink size={18} />
+                        </a>
+                      )}
                     </div>
-                  )}
+                    
+                    <div className="p-6 flex-1 flex flex-col">
+                      <div className="mb-6 flex items-start justify-between gap-2">
+                        <h3 className="text-xl font-bold text-slate-800 leading-tight">{q.texte}</h3>
+                        <div className="shrink-0 bg-slate-50 px-2 py-1 rounded-lg border border-slate-100 flex flex-col items-center min-w-[40px]">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase leading-none mb-1">Score</span>
+                          <span className="text-sm font-bold text-slate-700 leading-none">{score}</span>
+                        </div>
+                      </div>
+
+                      {/* Votes Display */}
+                      <div className="grid grid-cols-3 gap-2 mb-6">
+                        {members.map(member => {
+                          const status = getVoteStatus(q.id, member.pseudo);
+                          const isCurrent = currentMember === member.pseudo;
+                          
+                          return (
+                            <div
+                              key={member.pseudo}
+                              className={`relative p-2 rounded-lg text-center transition-all ${
+                                status === 'OK' ? 'bg-emerald-500 text-white' :
+                                status === 'POURQUOI PAS' ? 'bg-amber-400 text-white' :
+                                status === 'KO' ? 'bg-rose-500 text-white' :
+                                'bg-slate-50 text-slate-400'
+                              } ${isCurrent ? 'ring-2 ring-slate-800 ring-offset-2' : ''}`}
+                            >
+                              <span className="text-xs font-bold block truncate">
+                                {member.pseudo} {
+                                  status === 'OK' ? '🤘' : 
+                                  status === 'POURQUOI PAS' ? '🤔' : 
+                                  status === 'KO' ? '❌' : 
+                                  (status && status !== 'Pas de réponse' ? `(${status})` : '')
+                                }
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Voting Controls */}
+                      {currentMember && q.status === 'active' && (
+                        <div className="mt-auto pt-4 border-t border-slate-50 flex justify-center gap-3">
+                          <button
+                            onClick={() => handleVote(q.id, 'OK')}
+                            className={`p-3 rounded-xl transition-all ${getVoteStatus(q.id, currentMember) === 'OK' ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-100 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600'}`}
+                            title="OK"
+                          >
+                            <Check size={20} />
+                          </button>
+                          <button
+                            onClick={() => handleVote(q.id, 'POURQUOI PAS')}
+                            className={`p-3 rounded-xl transition-all ${getVoteStatus(q.id, currentMember) === 'POURQUOI PAS' ? 'bg-amber-500 text-white shadow-md' : 'bg-slate-100 text-slate-400 hover:bg-amber-50 hover:text-amber-600'}`}
+                            title="POURQUOI PAS"
+                          >
+                            <HelpCircle size={20} />
+                          </button>
+                          <button
+                            onClick={() => handleVote(q.id, 'KO')}
+                            className={`p-3 rounded-xl transition-all ${getVoteStatus(q.id, currentMember) === 'KO' ? 'bg-rose-600 text-white shadow-md' : 'bg-slate-100 text-slate-400 hover:bg-rose-50 hover:text-rose-600'}`}
+                            title="KO"
+                          >
+                            <X size={20} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </div>
+        </>
+      )}
+
+      {activeTab === 'admin' && (
+        <div className="max-w-2xl mx-auto space-y-8">
+          <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
+            <h2 className="text-2xl font-display text-slate-800 mb-6 flex items-center gap-2">
+              <Users className="text-slate-400" />
+              Gestion des membres
+            </h2>
+            
+            <form onSubmit={handleAddMember} className="flex gap-3 mb-8">
+              <input
+                type="text"
+                value={newMemberPseudo}
+                onChange={e => setNewMemberPseudo(e.target.value)}
+                placeholder="Nouveau pseudo..."
+                className="flex-1 px-4 py-3 rounded-xl bg-slate-50 border-none focus:ring-2 focus:ring-slate-800 transition-all"
+              />
+              <button
+                type="submit"
+                className="bg-slate-800 text-white px-6 py-3 rounded-xl font-bold hover:bg-slate-700 transition-all flex items-center gap-2"
+              >
+                <UserPlus size={20} />
+                Ajouter
+              </button>
+            </form>
+
+            <div className="space-y-3">
+              {members.map(member => (
+                <div key={member.pseudo} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center font-bold text-slate-400 border border-slate-200">
+                      {member.pseudo[0]}
+                    </div>
+                    <span className="font-bold text-slate-700">{member.pseudo}</span>
+                  </div>
+                  <button
+                    onClick={() => handleRemoveMember(member.pseudo)}
+                    className="p-2 text-rose-400 hover:bg-rose-50 rounded-xl transition-all"
+                    title="Supprimer le membre et ses votes"
+                  >
+                    <UserMinus size={20} />
+                  </button>
                 </div>
-              </motion.div>
-            );
-          })}
-        </AnimatePresence>
-      </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-slate-50 p-8 rounded-3xl border border-dashed border-slate-200">
+            <h3 className="text-lg font-bold text-slate-800 mb-2">Titres rejetés</h3>
+            <p className="text-sm text-slate-500 mb-6">Ces titres ont été sortis du sondage sans être validés.</p>
+            <div className="space-y-2">
+              {questions.filter(q => q.status === 'rejected').map(q => (
+                <div key={q.id} className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-100">
+                  <span className="font-medium text-slate-600">{q.texte}</span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleUpdateStatus(q.id, 'active')}
+                      className="text-xs font-bold text-slate-400 hover:text-slate-800 uppercase tracking-wider"
+                    >
+                      Réactiver
+                    </button>
+                    <button
+                      onClick={() => handleDeleteQuestion(q.id)}
+                      className="text-rose-400 hover:text-rose-600"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {questions.filter(q => q.status === 'rejected').length === 0 && (
+                <div className="text-center py-4 text-slate-400 text-sm italic">Aucun titre rejeté</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add Song Modal */}
       <AnimatePresence>

@@ -19,3 +19,12 @@
 .vote-maybe { @apply bg-amber-500 text-white hover:bg-amber-600; }
 .vote-no { @apply bg-rose-500 text-white hover:bg-rose-600; }
 .vote-none { @apply bg-slate-100 text-slate-400 hover:bg-slate-200; }
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

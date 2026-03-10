@@ -287,32 +287,32 @@ export default function App() {
       </header>
 
       {/* Navigation Tabs */}
-      <div className="flex justify-center mb-12">
-        <div className="flex bg-slate-100 p-1 rounded-2xl shadow-inner">
+      <div className="flex justify-center mb-12 px-4">
+        <div className="flex bg-slate-100 p-1 rounded-2xl shadow-inner overflow-x-auto no-scrollbar max-w-full">
           <button
             onClick={() => setActiveTab('poll')}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'poll' ? 'bg-white shadow-md text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
+            className={`flex items-center gap-2 px-4 sm:px-6 py-3 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'poll' ? 'bg-white shadow-md text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
           >
             <TrendingUp size={18} />
             Sondage
           </button>
           <button
             onClick={() => setActiveTab('repertoire')}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'repertoire' ? 'bg-white shadow-md text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
+            className={`flex items-center gap-2 px-4 sm:px-6 py-3 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'repertoire' ? 'bg-white shadow-md text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
           >
             <BookOpen size={18} />
             Répertoire
           </button>
           <button
             onClick={() => setActiveTab('rejected')}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'rejected' ? 'bg-white shadow-md text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
+            className={`flex items-center gap-2 px-4 sm:px-6 py-3 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'rejected' ? 'bg-white shadow-md text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
           >
             <XCircle size={18} />
             Rejetés
           </button>
           <button
             onClick={() => setActiveTab('admin')}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'admin' ? 'bg-white shadow-md text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
+            className={`flex items-center gap-2 px-4 sm:px-6 py-3 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'admin' ? 'bg-white shadow-md text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
           >
             <Settings size={18} />
             Admin
@@ -367,24 +367,24 @@ export default function App() {
             <>
               {/* Actions & Sorting */}
           <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-            <div className="flex bg-slate-100 p-1 rounded-xl">
+            <div className="flex bg-slate-100 p-1 rounded-xl overflow-x-auto no-scrollbar max-w-full">
               <button
                 onClick={() => setSortBy('recent')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${sortBy === 'recent' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${sortBy === 'recent' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
               >
                 <Clock size={16} />
                 Récents
               </button>
               <button
                 onClick={() => setSortBy('popular')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${sortBy === 'popular' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${sortBy === 'popular' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
               >
                 <TrendingUp size={16} />
                 Populaires
               </button>
               <button
                 onClick={() => setSortBy('alpha')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${sortBy === 'alpha' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${sortBy === 'alpha' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
               >
                 <SortAsc size={16} />
                 A-Z

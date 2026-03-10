@@ -52,9 +52,13 @@ export default function App() {
   const [newMemberPseudo, setNewMemberPseudo] = useState('');
   const socketRef = useRef<WebSocket | null>(null);
 
+  const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
+  const [confirmingMemberRemove, setConfirmingMemberRemove] = useState<string | null>(null);
+
   const getScore = (questionId: number) => {
     let score = 0;
-    votes.forEach(v => {
+    const activeMemberPseudos = members.filter(m => m.active === 1).map(m => m.pseudo);
+    votes.filter(v => activeMemberPseudos.includes(v.pseudo)).forEach(v => {
       const rep = v.reponses[questionId];
       if (rep === 'OK') score += 2;
       else if (rep === 'POURQUOI PAS') score += 1;
@@ -77,7 +81,7 @@ export default function App() {
 
   useEffect(() => {
     fetchData();
-    connectWebSocket();
+    const socket = connectWebSocket();
     
     const savedMember = localStorage.getItem('poll_member');
     if (savedMember) {
@@ -85,7 +89,7 @@ export default function App() {
     }
 
     return () => {
-      socketRef.current?.close();
+      socket.close();
     };
   }, []);
 
@@ -116,7 +120,10 @@ export default function App() {
     socket.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === 'QUESTION_ADDED') {
-        setQuestions(prev => [...prev, data.question]);
+        setQuestions(prev => {
+          if (prev.some(q => q.id === data.question.id)) return prev;
+          return [...prev, data.question];
+        });
       } else if (data.type === 'QUESTION_DELETED') {
         setQuestions(prev => prev.filter(q => q.id !== data.id));
       } else if (data.type === 'QUESTION_UPDATED') {
@@ -129,7 +136,17 @@ export default function App() {
           return [...filtered, data.vote];
         });
       } else if (data.type === 'MEMBER_ADDED') {
-        setMembers(prev => [...prev, data.member]);
+        setMembers(prev => {
+          const exists = prev.find(m => m.pseudo === data.member.pseudo);
+          if (exists) return prev.map(m => m.pseudo === data.member.pseudo ? data.member : m);
+          return [...prev, data.member];
+        });
+      } else if (data.type === 'MEMBER_UPDATED') {
+        setMembers(prev => prev.map(m => m.pseudo === data.member.pseudo ? data.member : m));
+        if (data.member.active === 0 && currentMember === data.member.pseudo) {
+          setCurrentMember(null);
+          localStorage.removeItem('poll_member');
+        }
       } else if (data.type === 'MEMBER_REMOVED') {
         setMembers(prev => prev.filter(m => m.pseudo !== data.pseudo));
         setVotes(prev => prev.filter(v => v.pseudo !== data.pseudo));
@@ -143,6 +160,8 @@ export default function App() {
     socket.onclose = () => {
       setTimeout(connectWebSocket, 3000);
     };
+
+    return socket;
   };
 
   const handleAddQuestion = async (e: React.FormEvent) => {
@@ -163,9 +182,9 @@ export default function App() {
   };
 
   const handleDeleteQuestion = async (id: number) => {
-    if (!window.confirm('Supprimer ce titre ?')) return;
     try {
       await fetch(`/api/questions/${id}`, { method: 'DELETE' });
+      setConfirmingDelete(null);
     } catch (err) {
       console.error('Failed to delete question', err);
     }
@@ -199,11 +218,23 @@ export default function App() {
   };
 
   const handleRemoveMember = async (pseudo: string) => {
-    if (!window.confirm(`Supprimer ${pseudo} et tous ses votes ?`)) return;
     try {
       await fetch(`/api/members/${pseudo}`, { method: 'DELETE' });
+      setConfirmingMemberRemove(null);
     } catch (err) {
       console.error('Failed to remove member', err);
+    }
+  };
+
+  const handleReactivateMember = async (pseudo: string) => {
+    try {
+      await fetch(`/api/members/${pseudo}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: true }),
+      });
+    } catch (err) {
+      console.error('Failed to reactivate member', err);
     }
   };
   const handleVote = async (questionId: number, status: VoteStatus) => {
@@ -291,8 +322,8 @@ export default function App() {
               <span className="text-xs font-bold uppercase tracking-wider">Qui vote ?</span>
             </div>
             <div className="flex flex-wrap justify-center gap-3">
-              {members.length > 0 ? (
-                members.map(member => (
+              {members.filter(m => m.active === 1).length > 0 ? (
+                members.filter(m => m.active === 1).map(member => (
                   <button
                     key={member.pseudo}
                     onClick={() => selectMember(member.pseudo)}
@@ -306,7 +337,7 @@ export default function App() {
                   </button>
                 ))
               ) : (
-                <p className="text-slate-400 text-sm italic">Aucun membre configuré. Allez dans Admin.</p>
+                <p className="text-slate-400 text-sm italic">Aucun membre actif. Allez dans Admin.</p>
               )}
             </div>
           </div>
@@ -397,40 +428,61 @@ export default function App() {
                       
                       {/* Admin/Quick Actions */}
                       <div className="absolute top-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {q.status === 'active' && (
-                          <>
+                        {confirmingDelete === q.id ? (
+                          <div className="flex gap-1 bg-white p-1 rounded-full shadow-lg border border-rose-100">
                             <button
-                              onClick={() => handleUpdateStatus(q.id, 'validated')}
-                              className="p-2 bg-emerald-500 text-white rounded-full hover:bg-emerald-600 shadow-lg"
-                              title="Valider (ajouter au répertoire)"
+                              onClick={() => handleDeleteQuestion(q.id)}
+                              className="p-1.5 bg-rose-500 text-white rounded-full hover:bg-rose-600"
+                              title="Confirmer la suppression"
                             >
-                              <CheckCircle2 size={18} />
+                              <Check size={14} />
                             </button>
                             <button
-                              onClick={() => handleUpdateStatus(q.id, 'rejected')}
-                              className="p-2 bg-rose-500 text-white rounded-full hover:bg-rose-600 shadow-lg"
-                              title="Rejeter"
+                              onClick={() => setConfirmingDelete(null)}
+                              className="p-1.5 bg-slate-100 text-slate-400 rounded-full hover:bg-slate-200"
+                              title="Annuler"
                             >
-                              <XCircle size={18} />
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            {q.status === 'active' && (
+                              <>
+                                <button
+                                  onClick={() => handleUpdateStatus(q.id, 'validated')}
+                                  className="p-2 bg-emerald-500 text-white rounded-full hover:bg-emerald-600 shadow-lg"
+                                  title="Valider (ajouter au répertoire)"
+                                >
+                                  <CheckCircle2 size={18} />
+                                </button>
+                                <button
+                                  onClick={() => handleUpdateStatus(q.id, 'rejected')}
+                                  className="p-2 bg-rose-500 text-white rounded-full hover:bg-rose-600 shadow-lg"
+                                  title="Rejeter"
+                                >
+                                  <XCircle size={18} />
+                                </button>
+                              </>
+                            )}
+                            {q.status === 'validated' && (
+                              <button
+                                onClick={() => handleUpdateStatus(q.id, 'active')}
+                                className="p-2 bg-slate-500 text-white rounded-full hover:bg-slate-600 shadow-lg"
+                                title="Remettre en sondage"
+                              >
+                                <Archive size={18} />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => setConfirmingDelete(q.id)}
+                              className="p-2 bg-white text-rose-500 rounded-full hover:bg-rose-50 shadow-lg"
+                              title="Supprimer définitivement"
+                            >
+                              <Trash2 size={18} />
                             </button>
                           </>
                         )}
-                        {q.status === 'validated' && (
-                          <button
-                            onClick={() => handleUpdateStatus(q.id, 'active')}
-                            className="p-2 bg-slate-500 text-white rounded-full hover:bg-slate-600 shadow-lg"
-                            title="Remettre en sondage"
-                          >
-                            <Archive size={18} />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleDeleteQuestion(q.id)}
-                          className="p-2 bg-white text-rose-500 rounded-full hover:bg-rose-50 shadow-lg"
-                          title="Supprimer définitivement"
-                        >
-                          <Trash2 size={18} />
-                        </button>
                       </div>
 
                       {q.lien && (
@@ -459,7 +511,10 @@ export default function App() {
                         {members.map(member => {
                           const status = getVoteStatus(q.id, member.pseudo);
                           const isCurrent = currentMember === member.pseudo;
+                          const isGhost = member.active === 0;
                           
+                          if (isGhost && !status) return null; // Don't show ghosts who didn't vote
+
                           return (
                             <div
                               key={member.pseudo}
@@ -468,7 +523,8 @@ export default function App() {
                                 status === 'POURQUOI PAS' ? 'bg-amber-400 text-white' :
                                 status === 'KO' ? 'bg-rose-500 text-white' :
                                 'bg-slate-50 text-slate-400'
-                              } ${isCurrent ? 'ring-2 ring-slate-800 ring-offset-2' : ''}`}
+                              } ${isCurrent ? 'ring-2 ring-slate-800 ring-offset-2' : ''} ${isGhost ? 'opacity-40 grayscale-[0.5]' : ''}`}
+                              title={isGhost ? `${member.pseudo} (Fantôme)` : member.pseudo}
                             >
                               <span className="text-xs font-bold block truncate">
                                 {member.pseudo} {
@@ -544,7 +600,8 @@ export default function App() {
             </form>
 
             <div className="space-y-3">
-              {members.map(member => (
+              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">Membres Actifs</h3>
+              {members.filter(m => m.active === 1).map(member => (
                 <div key={member.pseudo} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center font-bold text-slate-400 border border-slate-200">
@@ -552,15 +609,57 @@ export default function App() {
                     </div>
                     <span className="font-bold text-slate-700">{member.pseudo}</span>
                   </div>
-                  <button
-                    onClick={() => handleRemoveMember(member.pseudo)}
-                    className="p-2 text-rose-400 hover:bg-rose-50 rounded-xl transition-all"
-                    title="Supprimer le membre et ses votes"
-                  >
-                    <UserMinus size={20} />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {confirmingMemberRemove === member.pseudo ? (
+                      <div className="flex gap-1 bg-white p-1 rounded-xl shadow-sm border border-rose-100">
+                        <button
+                          onClick={() => handleRemoveMember(member.pseudo)}
+                          className="px-3 py-1 bg-rose-500 text-white text-xs font-bold rounded-lg hover:bg-rose-600"
+                        >
+                          Confirmer
+                        </button>
+                        <button
+                          onClick={() => setConfirmingMemberRemove(null)}
+                          className="px-3 py-1 bg-slate-100 text-slate-400 text-xs font-bold rounded-lg hover:bg-slate-200"
+                        >
+                          Annuler
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmingMemberRemove(member.pseudo)}
+                        className="p-2 text-rose-400 hover:bg-rose-50 rounded-xl transition-all"
+                        title="Passer en mode fantôme"
+                      >
+                        <UserMinus size={20} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
+
+              {members.filter(m => m.active === 0).length > 0 && (
+                <>
+                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mt-8 mb-2">Membres Fantômes</h3>
+                  {members.filter(m => m.active === 0).map(member => (
+                    <div key={member.pseudo} className="flex items-center justify-between p-4 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                      <div className="flex items-center gap-3 opacity-50">
+                        <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center font-bold text-slate-300 border border-slate-100">
+                          {member.pseudo[0]}
+                        </div>
+                        <span className="font-bold text-slate-500 italic">{member.pseudo}</span>
+                      </div>
+                      <button
+                        onClick={() => handleReactivateMember(member.pseudo)}
+                        className="p-2 text-emerald-400 hover:bg-emerald-50 rounded-xl transition-all"
+                        title="Réactiver le membre"
+                      >
+                        <UserPlus size={20} />
+                      </button>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           </div>
 

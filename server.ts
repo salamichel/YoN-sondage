@@ -90,28 +90,41 @@ app.put('/api/questions/:id/status', (req, res) => {
 });
 
 app.get('/api/members', (req, res) => {
-  const members = db.prepare('SELECT * FROM members WHERE active = 1').all();
+  const members = db.prepare('SELECT * FROM members').all();
   res.json(members);
 });
 
 app.post('/api/members', (req, res) => {
   const { pseudo } = req.body;
   try {
-    db.prepare('INSERT INTO members (pseudo) VALUES (?)').run(pseudo);
-    broadcast({ type: 'MEMBER_ADDED', member: { pseudo, active: 1 } });
-    res.status(201).json({ pseudo });
+    const existing = db.prepare('SELECT * FROM members WHERE pseudo = ?').get(pseudo) as any;
+    if (existing) {
+      db.prepare('UPDATE members SET active = 1 WHERE pseudo = ?').run(pseudo);
+      broadcast({ type: 'MEMBER_UPDATED', member: { pseudo, active: 1 } });
+      res.json({ pseudo, active: 1 });
+    } else {
+      db.prepare('INSERT INTO members (pseudo) VALUES (?)').run(pseudo);
+      broadcast({ type: 'MEMBER_ADDED', member: { pseudo, active: 1 } });
+      res.status(201).json({ pseudo, active: 1 });
+    }
   } catch (e) {
-    res.status(400).json({ error: 'Member already exists' });
+    res.status(400).json({ error: 'Failed to add member' });
   }
+});
+
+app.put('/api/members/:pseudo/status', (req, res) => {
+  const { pseudo } = req.params;
+  const { active } = req.body;
+  db.prepare('UPDATE members SET active = ? WHERE pseudo = ?').run(active ? 1 : 0, pseudo);
+  broadcast({ type: 'MEMBER_UPDATED', member: { pseudo, active: active ? 1 : 0 } });
+  res.sendStatus(200);
 });
 
 app.delete('/api/members/:pseudo', (req, res) => {
   const { pseudo } = req.params;
-  // Option: Mark as inactive instead of deleting to preserve history if needed
-  // Or delete votes too
-  db.prepare('DELETE FROM members WHERE pseudo = ?').run(pseudo);
-  db.prepare('DELETE FROM votes WHERE pseudo = ?').run(pseudo);
-  broadcast({ type: 'MEMBER_REMOVED', pseudo });
+  // Soft delete: mark as inactive
+  db.prepare('UPDATE members SET active = 0 WHERE pseudo = ?').run(pseudo);
+  broadcast({ type: 'MEMBER_UPDATED', member: { pseudo, active: 0 } });
   res.sendStatus(200);
 });
 

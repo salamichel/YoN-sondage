@@ -48,7 +48,7 @@ export default function App() {
   const [newQuestion, setNewQuestion] = useState({ texte: '', lien: '' });
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<'recent' | 'popular' | 'alpha'>('recent');
-  const [activeTab, setActiveTab] = useState<'poll' | 'repertoire' | 'admin'>('poll');
+  const [activeTab, setActiveTab] = useState<'poll' | 'repertoire' | 'rejected' | 'admin'>('poll');
   const [newMemberPseudo, setNewMemberPseudo] = useState('');
   const socketRef = useRef<WebSocket | null>(null);
 
@@ -304,6 +304,13 @@ export default function App() {
             Répertoire
           </button>
           <button
+            onClick={() => setActiveTab('rejected')}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'rejected' ? 'bg-white shadow-md text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            <XCircle size={18} />
+            Rejetés
+          </button>
+          <button
             onClick={() => setActiveTab('admin')}
             className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'admin' ? 'bg-white shadow-md text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
           >
@@ -399,7 +406,10 @@ export default function App() {
               {sortedQuestions
                 .filter(q => {
                   const status = q.status || 'active';
-                  return activeTab === 'poll' ? status === 'active' : status === 'validated';
+                  if (activeTab === 'poll') return status === 'active';
+                  if (activeTab === 'repertoire') return status === 'validated';
+                  if (activeTab === 'rejected') return status === 'rejected';
+                  return false;
                 }).length === 0 && (
                   <motion.div 
                     initial={{ opacity: 0 }}
@@ -413,7 +423,10 @@ export default function App() {
               {sortedQuestions
                 .filter(q => {
                   const status = q.status || 'active';
-                  return activeTab === 'poll' ? status === 'active' : status === 'validated';
+                  if (activeTab === 'poll') return status === 'active';
+                  if (activeTab === 'repertoire') return status === 'validated';
+                  if (activeTab === 'rejected') return status === 'rejected';
+                  return false;
                 })
                 .map((q, index) => {
                 const thumb = extractYoutubeThumbnail(q.lien) || `https://picsum.photos/seed/${encodeURIComponent(q.texte)}/400/300`;
@@ -481,7 +494,7 @@ export default function App() {
                                 </button>
                               </>
                             )}
-                            {q.status === 'validated' && (
+                            {(q.status === 'validated' || q.status === 'rejected') && (
                               <button
                                 onClick={() => handleUpdateStatus(q.id, 'active')}
                                 className="p-2 bg-slate-500 text-white rounded-full hover:bg-slate-600 shadow-lg"
@@ -515,7 +528,16 @@ export default function App() {
                     
                     <div className="p-6 flex-1 flex flex-col">
                       <div className="mb-6 flex items-start justify-between gap-2">
-                        <h3 className="text-xl font-bold text-slate-800 leading-tight">{q.texte}</h3>
+                        <div>
+                          <h3 className="text-xl font-bold text-slate-800 leading-tight mb-1">{q.texte}</h3>
+                          {q.status !== 'active' && (
+                            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                              q.status === 'validated' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'
+                            }`}>
+                              {q.status === 'validated' ? 'Répertoire' : 'Rejeté'}
+                            </span>
+                          )}
+                        </div>
                         <div className="shrink-0 bg-slate-50 px-2 py-1 rounded-lg border border-slate-100 flex flex-col items-center min-w-[40px]">
                           <span className="text-[10px] font-bold text-slate-400 uppercase leading-none mb-1">Score</span>
                           <span className="text-sm font-bold text-slate-700 leading-none">{score}</span>

@@ -342,7 +342,23 @@ export default function App() {
             </div>
           </div>
 
-          {/* Actions & Sorting */}
+          {!currentMember ? (
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="py-20 text-center bg-white/50 rounded-[40px] border-2 border-dashed border-slate-200"
+            >
+              <div className="bg-slate-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Users className="text-slate-400" size={40} />
+              </div>
+              <h3 className="text-2xl font-display text-slate-800 mb-3">Sélectionnez votre profil</h3>
+              <p className="text-slate-500 max-w-sm mx-auto px-6">
+                Choisissez qui vous êtes dans la liste ci-dessus pour accéder aux titres et pouvoir voter.
+              </p>
+            </motion.div>
+          ) : (
+            <>
+              {/* Actions & Sorting */}
           <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
             <div className="flex bg-slate-100 p-1 rounded-xl">
               <button
@@ -573,6 +589,8 @@ export default function App() {
           </div>
         </>
       )}
+    </>
+  )}
 
       {activeTab === 'admin' && (
         <div className="max-w-2xl mx-auto space-y-8">

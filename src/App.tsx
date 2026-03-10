@@ -241,7 +241,17 @@ export default function App() {
     if (!currentMember) return;
     
     const myVote = votes.find(v => v.pseudo === currentMember);
-    const newReponses = { ...(myVote?.reponses || {}), [questionId]: status as string };
+    const currentStatus = myVote?.reponses[questionId];
+    
+    let newReponses = { ...(myVote?.reponses || {}) };
+    
+    if (currentStatus === status) {
+      // Annuler le vote si on reclique sur le même bouton
+      delete newReponses[questionId];
+    } else {
+      // Mettre à jour ou ajouter le vote
+      newReponses[questionId] = status as string;
+    }
 
     try {
       await fetch('/api/votes', {
